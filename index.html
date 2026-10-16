@@ -3,7 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Easy Research Library</title>
+<title>Easy Researcher Library</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 100 100%27%3E%3Ctext y=%27.9em%27 font-size=%2790%27%3E📚%3C/text%3E%3C/svg%3E">
 <style>
 :root{--bg:#fafaf7;--fg:#1d1d1b;--muted:#6b6b66;--card:#fff;--line:#e2e0d8;--acc:#1b6b4a;--accfg:#fff}
 @media (prefers-color-scheme:dark){:root{--bg:#161614;--fg:#eeeee8;--muted:#9a9a92;--card:#1f1f1c;--line:#34342f;--acc:#4fb88a;--accfg:#0d1a14}}
@@ -24,19 +25,61 @@ a{color:var(--acc)}
 ul{padding-left:18px}
 details.ev{margin-top:14px;font-family:system-ui,sans-serif}details.ev summary{cursor:pointer;font-weight:600}.ev h4{margin:14px 0 6px;font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}.ev a{display:inline-block;margin:0 8px 6px 0;font-size:14px}
 .small{font-size:12px;color:var(--muted);margin-top:30px;font-family:system-ui,sans-serif}
+
+:root{--soft:#e9f3ee}
+@media (prefers-color-scheme:dark){:root{--soft:#1c2a24}}
+html{scroll-behavior:smooth}
+main{padding-top:36px}
+.hero{text-align:center;margin-bottom:22px}
+.hero h1{font-size:clamp(26px,6vw,36px);letter-spacing:-.01em}
+.hero .sub{max-width:520px;margin:6px auto 14px;font-size:15px}
+.join{display:inline-block;padding:10px 18px;border-radius:99px;background:var(--acc);color:var(--accfg);text-decoration:none;font:600 14px system-ui,sans-serif;box-shadow:0 2px 8px rgba(0,0,0,.12);transition:transform .15s}
+.join:hover{transform:translateY(-1px)}
+.tabs{display:flex;gap:6px;background:var(--soft);padding:5px;border-radius:12px;margin-bottom:12px}
+.tab{flex:1;background:transparent;color:var(--fg);padding:9px 6px;font:600 14px system-ui,sans-serif;border-radius:8px}
+.tab[aria-pressed="true"]{background:var(--card);color:var(--acc);box-shadow:0 1px 4px rgba(0,0,0,.12)}
+.row{display:flex;gap:8px}
+.row input{margin:0;flex:1}
+.row button{white-space:nowrap}
+input:focus,button:focus-visible,a:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.chips{margin:10px 0 4px;font-family:system-ui,sans-serif;font-size:13px;color:var(--muted)}
+.chip{display:inline-block;margin:0 6px 6px 0;padding:4px 10px;border:1px solid var(--line);border-radius:99px;background:var(--card);color:var(--fg);font:13px system-ui,sans-serif;cursor:pointer}
+.chip:hover{border-color:var(--acc);color:var(--acc)}
+.card{box-shadow:0 1px 3px rgba(0,0,0,.06)}
+.card.load::before{content:"";display:inline-block;width:14px;height:14px;margin-right:8px;vertical-align:-2px;border:2px solid var(--line);border-top-color:var(--acc);border-radius:50%;animation:sp .8s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+li{margin-bottom:6px}
+.foot{margin-top:34px;padding-top:16px;border-top:1px solid var(--line);text-align:center;font:13px/1.8 system-ui,sans-serif;color:var(--muted)}
+.foot a{color:var(--acc);text-decoration:none;word-break:break-all}
+.foot .small{margin-top:14px;font-size:12px}
+@media (max-width:480px){.row{flex-direction:column}.row button{width:100%}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
 </style>
 </head>
 <body>
 <main>
-<h1>Easy Research Library</h1>
-<p class="sub">Pick articles, books or theses, then enter a DOI, title, ISBN or topic. We look for a legal, free full-text copy. Results appear on this page; nothing is sent by email.</p>
-<select id="mode"><option value="articles">Research articles</option><option value="books">Books</option><option value="theses">Theses &amp; dissertations</option></select>
-<input id="q" placeholder="DOI, title, author, ISBN or thesis topic" autocomplete="off">
-<input id="email" type="email" placeholder="Email (optional)">
-<label class="meta" style="display:block;margin-bottom:10px"><input id="consent" type="checkbox" style="width:auto;margin:0 6px 0 0"> I'm happy to be contacted about research collaboration. No article will be emailed to me.</label>
-<button id="go">Find free copy</button>
-<div id="out"></div>
+<header class="hero">
+<h1>📚 Easy Researcher Library</h1>
+<p class="sub">Find free, legal full texts of research articles, books and theses, all in one place.</p>
+<a class="join" id="join" href="https://sites.google.com/view/schrodingersstudent/initiatives" target="_blank" rel="noopener noreferrer">🤝 Join our research community</a>
+</header>
+<select id="mode" hidden><option value="articles">Research articles</option><option value="books">Books</option><option value="theses">Theses</option></select>
+<div class="tabs" role="group" aria-label="What are you looking for?">
+<button class="tab" data-m="articles" aria-pressed="true">Articles</button>
+<button class="tab" data-m="books" aria-pressed="false">Books</button>
+<button class="tab" data-m="theses" aria-pressed="false">Theses</button>
+</div>
+<div class="row">
+<input id="q" placeholder="DOI or article title" autocomplete="off" aria-label="Search">
+<button id="go">Search</button>
+</div>
+<div class="chips" id="chips"></div>
+<div id="out" aria-live="polite"></div>
+<footer class="foot">
+<div>🌐 <a href="https://sites.google.com/view/schrodingersstudent/initiatives" target="_blank" rel="noopener noreferrer">sites.google.com/view/schrodingersstudent/initiatives</a></div>
+<div>✉ <a href="mailto:theeasyresearcher@gmail.com">theeasyresearcher@gmail.com</a></div>
 <p class="small">Sources: Links to 100+ open repositories. Only links to copies lawfully shared by publishers, authors, and repositories. Does not link to pirate sites such as scihb, oceanfpapers, frefullpdf, libgn, etc.</p>
+</footer>
 </main>
 <script>
 const $ = id => document.getElementById(id);
@@ -45,7 +88,6 @@ const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt
 const DOI_RE = /10\.\d{4,9}\/[^\s"<>]+/i;
 
 const UNPAYWALL_EMAIL = "bebeto.gnair2021@vitstudent.ac.in"; // TODO: your real email (sent to Unpaywall as contact)
-const FORM_ENDPOINT = ""; // TODO: e.g. a Formspree/Google Form endpoint that receives opt-ins
 const CACHE_TTL = 7*24*3600*1000;
 const mem = {};
 // [name, group, url]; {q} = search URL, otherwise homepage only
@@ -144,12 +186,6 @@ function everywhere(q, arr=SRC, label="legal sources"){
   return `<details class="ev card"><summary>Search everywhere (${arr.length} ${label})</summary><p class="meta">Linked sources open a prefilled search. Those marked ↗ open the site home page; paste your query there.</p>` + Object.keys(g).map(k=>`<h4>${esc(k)}</h4>${g[k].join("")}`).join("") + `</details>`;
 }
 
-function submitOptIn(q){
-  const e = $("email").value.trim();
-  if(!$("consent").checked || !/^\S+@\S+\.\S+$/.test(e) || !FORM_ENDPOINT) return;
-  fetch(FORM_ENDPOINT,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email:e,query:q,consent:true,time:new Date().toISOString()})}).catch(()=>{});
-}
-
 async function getJSON(url){
   const key = "oaf:"+url.replace(/[?&]mailto=[^&]*|[?&]email=[^&]*/g,"");
   if(mem[key]) return mem[key];
@@ -169,10 +205,9 @@ async function search(){
   const q = $("q").value.trim();
   const email = UNPAYWALL_EMAIL;
   if(!q){ return; }
-  submitOptIn(q);
   if($("mode").value==="books") return searchBooks(q);
   if($("mode").value==="theses") return searchTheses(q);
-  out.innerHTML = '<div class="card">Searching…</div>';
+  out.innerHTML = '<div class="card load">Searching…</div>';
 
   const m = q.match(DOI_RE);
   if(m){ return lookup(m[0].replace(/[.,;]+$/,""), email); }
@@ -205,7 +240,7 @@ async function addFatcat(doi, add){
 }
 
 async function lookup(doi, email){
-  out.innerHTML = '<div class="card">Checking Unpaywall and OpenAlex…</div>';
+  out.innerHTML = '<div class="card load">Checking Unpaywall and OpenAlex…</div>';
   let title = doi, locs = [], best = null, journal = "";
   const [up, oa, epmc, s2] = await Promise.allSettled([
     getJSON(`https://api.unpaywall.org/v2/${encodeURIComponent(doi)}?email=${encodeURIComponent(email)}`),
@@ -267,7 +302,7 @@ async function getText(url){
 const li = (src,t,url,extra="") => `<li><span class="tag">${esc(src)}</span><a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(t)}</a> <span class="meta">${esc(extra)}</span></li>`;
 
 async function extras(q, box){
-  box.innerHTML = '<div class="card meta">Checking arXiv, DOAJ and CORE…</div>';
+  box.innerHTML = '<div class="card load meta">Checking arXiv, DOAJ and CORE…</div>';
   const [ax, dj, co] = await Promise.allSettled([
     getText(PROXY_URL ? PROXY_URL.replace(/\/$/,"") + "/arxiv?q=" + encodeURIComponent(q) : "https://export.arxiv.org/api/query?max_results=5&search_query=" + encodeURIComponent("all:" + q.replace(/[^\w\s]/g,""))),
     getJSON("https://doaj.org/api/search/articles/" + encodeURIComponent(q) + "?pageSize=5"),
@@ -313,7 +348,7 @@ const BOOKSRC = [
 ];
 
 async function searchBooks(q){
-  out.innerHTML = '<div class="card">Searching Open Library, Google Books and Project Gutenberg…</div>';
+  out.innerHTML = '<div class="card load">Searching Open Library, Google Books and Project Gutenberg…</div>';
   const n = q.replace(/[-\s]/g,"");
   const isbn = /^(97[89])?\d{9}[\dXx]$/.test(n);
   const [ol, gb, gt] = await Promise.allSettled([
@@ -364,7 +399,7 @@ const THESISSRC = [
 ];
 
 async function searchTheses(q){
-  out.innerHTML = '<div class="card">Searching OpenAlex and CORE for theses…</div>';
+  out.innerHTML = '<div class="card load">Searching OpenAlex and CORE for theses…</div>';
   const [oa, co] = await Promise.allSettled([
     getJSON("https://api.openalex.org/works?filter=type:dissertation&per-page=10&search=" + encodeURIComponent(q) + "&mailto=" + encodeURIComponent(UNPAYWALL_EMAIL)),
     PROXY_URL ? getJSON(PROXY_URL.replace(/\/$/,"") + "/core?q=" + encodeURIComponent("(" + q.replace(/["()]/g," ") + ') AND documentType:"thesis"')) : Promise.reject("no proxy")
@@ -391,6 +426,24 @@ async function searchTheses(q){
     + (record.length ? `<div class="card"><b>Catalog records (free copy not listed)</b><ul>${record.join("")}</ul></div>` : "")
     + everywhere(q, THESISSRC, "thesis sources");
 }
+
+const PH = {articles:"DOI or article title", books:"Book title, author or ISBN", theses:"Thesis topic, title or author"};
+const EX = {articles:["10.1371/journal.pmed.0020124","Attention is all you need"], books:["Pride and Prejudice","9780140449136"], theses:["machine learning","climate change India"]};
+function renderChips(){
+  const m = $("mode").value;
+  $("chips").innerHTML = 'Try: ' + EX[m].map(x=>`<span class="chip" role="button" tabindex="0" data-q="${esc(x)}">${esc(x)}</span>`).join("");
+  $("chips").querySelectorAll(".chip").forEach(c=>{
+    const go = () => { $("q").value = c.dataset.q; search(); };
+    c.onclick = go; c.onkeydown = e => { if(e.key==="Enter"||e.key===" "){ e.preventDefault(); go(); } };
+  });
+}
+document.querySelectorAll(".tab").forEach(b => b.onclick = () => {
+  $("mode").value = b.dataset.m;
+  document.querySelectorAll(".tab").forEach(x => x.setAttribute("aria-pressed", String(x===b)));
+  $("q").placeholder = PH[b.dataset.m];
+  out.innerHTML = ""; renderChips(); $("q").focus();
+});
+renderChips();
 
 $("go").onclick = search;
 $("q").addEventListener("keydown", e => { if(e.key==="Enter") search(); });
