@@ -437,7 +437,11 @@ async function searchTheses(q){
 }
 
 const PH = {articles:"DOI or article title", books:"Book title, author or ISBN", theses:"Thesis topic, title or author"};
-const EX = {articles:["Evidence for High-Energy Extraterrestrial Neutrinos at the IceCube Detector","Quantum supremacy using a programmable superconducting processor"], books:["Thirukkural","Relativity: The Special and General Theory"], theses:["graphene","protein structure prediction"]};
+const EX = {
+  articles:[["IceCube neutrinos paper","Evidence for High-Energy Extraterrestrial Neutrinos at the IceCube Detector"],["Google quantum supremacy paper","Quantum supremacy using a programmable superconducting processor"]],
+  books:[["Thirukkural","Thirukkural"],["Einstein: Relativity","Relativity: The Special and General Theory"]],
+  theses:[["graphene","graphene"],["protein structure prediction","protein structure prediction"]]
+};
 function renderChips(){
   const m = $("mode").value;
   $("chips").innerHTML = 'Try: ' + EX[m].map(x=>`<span class="chip" role="button" tabindex="0" data-q="${esc(x[1])}">${esc(x[0])}</span>`).join("");
