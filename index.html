@@ -253,7 +253,7 @@ const li = (src,t,url,extra="") => `<li><span class="tag">${esc(src)}</span><a h
 async function extras(q, box){
   box.innerHTML = '<div class="card meta">Checking arXiv, DOAJ and CORE…</div>';
   const [ax, dj, co] = await Promise.allSettled([
-    getText("https://export.arxiv.org/api/query?max_results=5&search_query=" + encodeURIComponent("all:" + q.replace(/[^\w\s]/g," "))),
+    getText(PROXY_URL ? PROXY_URL.replace(/\/$/,"") + "/arxiv?q=" + encodeURIComponent(q) : "https://export.arxiv.org/api/query?max_results=5&search_query=" + encodeURIComponent("all:" + q.replace(/[^\w\s]/g,""))),
     getJSON("https://doaj.org/api/search/articles/" + encodeURIComponent(q) + "?pageSize=5"),
     PROXY_URL ? getJSON(PROXY_URL.replace(/\/$/,"") + "/core?q=" + encodeURIComponent(q)) : Promise.reject("no proxy")
   ]);
