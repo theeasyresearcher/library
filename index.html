@@ -192,7 +192,10 @@ async function search(){
 
 async function addFatcat(doi, add){
   try{
-    const r = await getJSON("https://api.fatcat.wiki/v0/release/lookup?hide=abstracts,refs&expand=files&doi=" + encodeURIComponent(doi.toLowerCase()));
+    const r = await Promise.race([
+      getJSON(PROXY_URL + "/fatcat?doi=" + encodeURIComponent(doi)),
+      new Promise((_, rej) => setTimeout(() => rej("timeout"), 9000))
+    ]);
     (r.files||[]).filter(f => !f.mimetype || f.mimetype === "application/pdf").forEach(f => {
       const u = (f.urls||[]).find(x => x.rel === "webarchive") || (f.urls||[]).find(x => x.rel === "repository") || (f.urls||[])[0];
       if(u) add(u.url, "Internet Archive (preserved)");
@@ -207,7 +210,7 @@ async function lookup(doi, email){
     getJSON(`https://api.unpaywall.org/v2/${encodeURIComponent(doi)}?email=${encodeURIComponent(email)}`),
     getJSON(`https://api.openalex.org/works/doi:${encodeURIComponent(doi)}?mailto=${encodeURIComponent(email)}`),
     getJSON(`https://www.ebi.ac.uk/europepmc/webservices/rest/search?query=DOI:%22${encodeURIComponent(doi)}%22&resultType=core&format=json`),
-    getJSON(`https://api.semanticscholar.org/graph/v1/paper/DOI:${encodeURIComponent(doi)}?fields=title,openAccessPdf`)
+    getJSON(PROXY_URL + "/s2?doi=" + encodeURIComponent(doi))
   ]);
   const add = (url, host, ver) => { if(url && !locs.some(x=>x.url===url)) locs.push({url, host, ver}); };
   if(epmc.status==="fulfilled"){
