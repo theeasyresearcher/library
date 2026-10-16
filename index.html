@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Easy Researcher Library</title>
+<title>Easy Research Library</title>
 <style>
 :root{--bg:#fafaf7;--fg:#1d1d1b;--muted:#6b6b66;--card:#fff;--line:#e2e0d8;--acc:#1b6b4a;--accfg:#fff}
 @media (prefers-color-scheme:dark){:root{--bg:#161614;--fg:#eeeee8;--muted:#9a9a92;--card:#1f1f1c;--line:#34342f;--acc:#4fb88a;--accfg:#0d1a14}}
@@ -28,15 +28,15 @@ details.ev{margin-top:14px;font-family:system-ui,sans-serif}details.ev summary{c
 </head>
 <body>
 <main>
-<h1>Easy Researcher Library</h1>
-<p class="sub">Pick articles or books, then enter a DOI, title or ISBN. We look for a legal, free full-text copy. Results appear on this page; nothing is sent by email.</p>
-<select id="mode"><option value="articles">Research articles</option><option value="books">Books</option></select>
-<input id="q" placeholder="DOI, article title, book title, author or ISBN" autocomplete="off">
+<h1>Easy Research Library</h1>
+<p class="sub">Pick articles, books or theses, then enter a DOI, title, ISBN or topic. We look for a legal, free full-text copy. Results appear on this page; nothing is sent by email.</p>
+<select id="mode"><option value="articles">Research articles</option><option value="books">Books</option><option value="theses">Theses &amp; dissertations</option></select>
+<input id="q" placeholder="DOI, title, author, ISBN or thesis topic" autocomplete="off">
 <input id="email" type="email" placeholder="Email (optional)">
 <label class="meta" style="display:block;margin-bottom:10px"><input id="consent" type="checkbox" style="width:auto;margin:0 6px 0 0"> I'm happy to be contacted about research collaboration. No article will be emailed to me.</label>
-<button id="go">Find free copy (click and wait 15s)</button>
+<button id="go">Find free copy</button>
 <div id="out"></div>
-<p class="small">Sources: Links to 100+ open repositories. Only links to copies lawfully shared by publishers, authors, and repositories. Does not link  to pirate sites such as scihb, oceanfpapers, frefullpdf, libgn, etc.</p>
+<p class="small">Sources: Links to 100+ open repositories. Only links to copies lawfully shared by publishers, authors, and repositories. Does not link to pirate sites such as scihb, oceanfpapers, frefullpdf, libgn, etc.</p>
 </main>
 <script>
 const $ = id => document.getElementById(id);
@@ -171,6 +171,7 @@ async function search(){
   if(!q){ return; }
   submitOptIn(q);
   if($("mode").value==="books") return searchBooks(q);
+  if($("mode").value==="theses") return searchTheses(q);
   out.innerHTML = '<div class="card">Searching…</div>';
 
   const m = q.match(DOI_RE);
@@ -232,7 +233,7 @@ async function lookup(doi, email){
       if(!locs.some(x=>x.url===url)) locs.push({url, host:l.source?.type||"repository", ver:l.version, lic:l.license});
     });
   }
-  await addFatcat(doi, add);
+  // await addFatcat(doi, add); // Fatcat was timing out; re-enable if the service recovers
   const bestUrl = best ? (best.url_for_pdf || best.url) : (locs[0]?.url);
   let html = `<div class="card"><h3>${esc(title)}</h3><div class="meta">${esc(journal)} · DOI ${esc(doi)}</div></div>`;
   if(bestUrl){
@@ -344,6 +345,51 @@ async function searchBooks(q){
     ? `<div class="card"><span class="tag ok">Free legal books found</span><ul>${rows.join("")}</ul></div>`
     : `<div class="card"><span class="tag">No free copy found here</span><p>Try the sources below, borrow from your library (many use Libby), or request an interlibrary loan.</p></div>`)
     + everywhere(q, BOOKSRC, "book sources");
+}
+
+// ---- Theses
+const THESISSRC = [
+["OATD","Worldwide","https://oatd.org/oatd/search?q={q}"],
+["BASE","Worldwide","https://www.base-search.net/Search/Results?lookfor={q}"],
+["CORE","Worldwide","https://core.ac.uk/search?q={q}"],
+["NDLTD","Worldwide","https://ndltd.org"],
+["Open Dissertations","Worldwide","https://opendissertations.org"],
+["DART-Europe","Europe & UK","https://www.dart-europe.org"],
+["EThOS (UK)","Europe & UK","https://ethos.bl.uk/"],
+["HAL (France)","Europe & UK","https://hal.science/search/index?q={q}"],
+["Shodhganga (India)","India","https://shodhganga.inflibnet.ac.in"],
+["Shodhgangotri (India, synopses)","India","https://shodhgangotri.inflibnet.ac.in"],
+["Google Scholar","Search engines","https://scholar.google.com/scholar?q={q}"],
+["WorldCat (find in a library)","Library access","https://search.worldcat.org/search?q={q}"]
+];
+
+async function searchTheses(q){
+  out.innerHTML = '<div class="card">Searching OpenAlex and CORE for theses…</div>';
+  const [oa, co] = await Promise.allSettled([
+    getJSON("https://api.openalex.org/works?filter=type:dissertation&per-page=10&search=" + encodeURIComponent(q) + "&mailto=" + encodeURIComponent(UNPAYWALL_EMAIL)),
+    PROXY_URL ? getJSON(PROXY_URL.replace(/\/$/,"") + "/core?q=" + encodeURIComponent("(" + q.replace(/["()]/g," ") + ') AND documentType:"thesis"')) : Promise.reject("no proxy")
+  ]);
+  const free = [], record = [];
+  if(oa.status==="fulfilled"){
+    (oa.value.results||[]).forEach(w=>{
+      const au = (w.authorships||[])[0]?.author?.display_name || "";
+      const meta = `${au} ${w.publication_year||""}`.trim();
+      const u = w.open_access?.oa_url;
+      if(u) free.push(li("OpenAlex", w.title||"Untitled", u, meta + " · free"));
+      else { const l = w.primary_location?.landing_page_url || w.doi; if(l) record.push(li("Record", w.title||"Untitled", l, meta + " · no free copy listed")); }
+    });
+  }
+  if(co.status==="fulfilled"){
+    (co.value.results||[]).forEach(r=>{
+      const u = r.downloadUrl || (r.id ? "https://core.ac.uk/works/"+r.id : null);
+      if(r.title && u) free.push(li("CORE", r.title, u, `${(r.authors||[])[0]?.name||""} ${r.yearPublished||""} · free`.trim()));
+    });
+  }
+  out.innerHTML = (free.length
+    ? `<div class="card"><span class="tag ok">Free theses found</span><ul>${free.join("")}</ul></div>`
+    : `<div class="card"><span class="tag">No free thesis found here</span><p>Try the repositories below. Many universities host theses only in their own library, so searching with the author name or university helps. You can also email the author or ask your library for an interlibrary loan.</p></div>`)
+    + (record.length ? `<div class="card"><b>Catalog records (free copy not listed)</b><ul>${record.join("")}</ul></div>` : "")
+    + everywhere(q, THESISSRC, "thesis sources");
 }
 
 $("go").onclick = search;
