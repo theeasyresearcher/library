@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OpenAccess Finder</title>
+<style>
+:root{--bg:#fafaf7;--fg:#1d1d1b;--muted:#6b6b66;--card:#fff;--line:#e2e0d8;--acc:#1b6b4a;--accfg:#fff}
+@media (prefers-color-scheme:dark){:root{--bg:#161614;--fg:#eeeee8;--muted:#9a9a92;--card:#1f1f1c;--line:#34342f;--acc:#4fb88a;--accfg:#0d1a14}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.5 Georgia,serif}
+main{max-width:720px;margin:0 auto;padding:28px 18px 60px}
+h1{font-size:28px;margin:0 0 4px}
+.sub{color:var(--muted);margin:0 0 22px;font-family:system-ui,sans-serif;font-size:14px}
+input,select{width:100%;padding:12px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--fg);font:16px system-ui,sans-serif;margin-bottom:8px}
+button{padding:11px 18px;border:0;border-radius:8px;background:var(--acc);color:var(--accfg);font:600 15px system-ui,sans-serif;cursor:pointer}
+button.alt{background:transparent;color:var(--acc);border:1px solid var(--acc);padding:7px 12px;font-size:13px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin-top:14px;font-family:system-ui,sans-serif}
+.card h3{margin:0 0 4px;font:600 16px Georgia,serif}
+.meta{color:var(--muted);font-size:13px}
+a{color:var(--acc)}
+.tag{display:inline-block;font-size:12px;padding:2px 8px;border-radius:99px;border:1px solid var(--line);margin-right:6px;color:var(--muted)}
+.ok{border-color:var(--acc);color:var(--acc)}
+ul{padding-left:18px}
+details.ev{margin-top:14px;font-family:system-ui,sans-serif}details.ev summary{cursor:pointer;font-weight:600}.ev h4{margin:14px 0 6px;font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}.ev a{display:inline-block;margin:0 8px 6px 0;font-size:14px}
+.small{font-size:12px;color:var(--muted);margin-top:30px;font-family:system-ui,sans-serif}
+</style>
+</head>
+<body>
+<main>
+<h1>OpenAccess Finder</h1>
+<p class="sub">Pick articles or books, then enter a DOI, title or ISBN. We look for a legal, free full-text copy. Results appear on this page; nothing is sent by email.</p>
+<select id="mode"><option value="articles">Research articles</option><option value="books">Books</option></select>
+<input id="q" placeholder="DOI, article title, book title, author or ISBN" autocomplete="off">
+<input id="email" type="email" placeholder="Email (optional)">
+<label class="meta" style="display:block;margin-bottom:10px"><input id="consent" type="checkbox" style="width:auto;margin:0 6px 0 0"> I'm happy to be contacted about research collaboration. No article will be emailed to me.</label>
+<button id="go">Find free copy</button>
+<div id="out"></div>
+<p class="small">Sources: Crossref, Unpaywall, OpenAlex, Europe PMC, Semantic Scholar, arXiv, DOAJ, CORE, Open Library, Google Books, Project Gutenberg, plus links to 100+ open repositories. Only links to copies lawfully shared by publishers, authors, and repositories.</p>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+const out = $("out");
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const DOI_RE = /10\.\d{4,9}\/[^\s"<>]+/i;
+
+const UNPAYWALL_EMAIL = "bebeto.gnair2021@vitstudent.ac.in"; // TODO: your real email (sent to Unpaywall as contact)
+const FORM_ENDPOINT = ""; // TODO: e.g. a Formspree/Google Form endpoint that receives opt-ins
+const CACHE_TTL = 7*24*3600*1000;
+const mem = {};
+// [name, group, url]; {q} = search URL, otherwise homepage only
+const SRC = [
+["Google Scholar","Search engines","https://scholar.google.com/scholar?q={q}"],
+["BASE","Search engines","https://www.base-search.net/Search/Results?lookfor={q}"],
+["CORE","Search engines","https://core.ac.uk/search?q={q}"],
+["Semantic Scholar","Search engines","https://www.semanticscholar.org/search?q={q}"],
+["OpenAlex","Search engines","https://openalex.org/works?search={q}"],
+["Lens.org","Search engines","https://www.lens.org/lens/search/scholar/list?q={q}"],
+["Internet Archive Scholar","Search engines","https://scholar.archive.org/search?q={q}"],
+["RefSeek","Search engines","https://www.refseek.com/search?q={q}"],
+["WorldWideScience","Search engines","https://worldwidescience.org"],
+["Science.gov","Search engines","https://www.science.gov"],
+["Scilit","Search engines","https://www.scilit.com"],
+["Baidu Scholar","Search engines","https://xueshu.baidu.com"],
+["JURN (arts & humanities)","Search engines","https://www.jurn.org"],
+["oa.mg","Search engines","https://oa.mg"],
+["Open Access Button","Access finders","https://openaccessbutton.org"],
+["GetTheResearch","Access finders","https://gettheresearch.org"],
+["Unpaywall","Access finders","https://unpaywall.org"],
+["OpenAIRE","Aggregators","https://www.openaire.eu"],
+["Paperity","Aggregators","https://paperity.org"],
+["Digital Commons Network","Aggregators","https://network.bepress.com"],
+["OAIster","Aggregators","https://oaister.worldcat.org"],
+["arXiv","Preprints","https://arxiv.org/search/?searchtype=all&query={q}"],
+["bioRxiv","Preprints","https://www.biorxiv.org/search/{q}"],
+["medRxiv","Preprints","https://www.medrxiv.org/search/{q}"],
+["ChemRxiv","Preprints","https://chemrxiv.org/engage/chemrxiv/search-dashboard?text={q}"],
+["SSRN","Preprints","https://papers.ssrn.com/sol3/results.cfm?txtKey_Words={q}"],
+["Preprints.org","Preprints","https://www.preprints.org/search?search1={q}"],
+["OSF Preprints","Preprints","https://osf.io/preprints"],
+["PsyArXiv","Preprints","https://psyarxiv.com"],
+["Research Square","Preprints","https://www.researchsquare.com"],
+["Cambridge Open Engage","Preprints","https://www.cambridge.org/engage"],
+["Europe PMC","Medicine & life sciences","https://europepmc.org/search?query={q}"],
+["PubMed Central","Medicine & life sciences","https://www.ncbi.nlm.nih.gov/pmc/?term={q}"],
+["PubMed (abstracts)","Medicine & life sciences","https://pubmed.ncbi.nlm.nih.gov/?term={q}"],
+["BioMed Central","Medicine & life sciences","https://www.biomedcentral.com/search?query={q}"],
+["Cochrane Library","Medicine & life sciences","https://www.cochranelibrary.com"],
+["INSPIRE HEP (physics)","Subject databases","https://inspirehep.net/literature?q={q}"],
+["NASA NTRS","Subject databases","https://ntrs.nasa.gov/search?q={q}"],
+["ERIC (education)","Subject databases","https://eric.ed.gov/?q={q}"],
+["PhilPapers","Subject databases","https://philpapers.org/s/{q}"],
+["CiteSeerX / dblp (CS)","Subject databases","https://dblp.org/search?q={q}"],
+["IDEAS / RePEc (economics)","Subject databases","https://ideas.repec.org"],
+["AgEcon Search","Subject databases","https://ageconsearch.umn.edu"],
+["AGRIS (agriculture)","Subject databases","https://agris.fao.org"],
+["EconBiz","Subject databases","https://www.econbiz.de"],
+["SSOAR (social science)","Subject databases","https://www.ssoar.info"],
+["NBER","Subject databases","https://www.nber.org"],
+["PLOS","Publishers (open access)","https://journals.plos.org/plosone/search?q={q}"],
+["MDPI","Publishers (open access)","https://www.mdpi.com/search?q={q}"],
+["Springer Open","Publishers (open access)","https://www.springeropen.com/search?query={q}"],
+["Hindawi","Publishers (open access)","https://www.hindawi.com"],
+["Nature Communications","Publishers (open access)","https://www.nature.com/ncomms"],
+["Springer (OA filter)","Publishers (mixed)","https://link.springer.com/search?query={q}"],
+["Wiley (OA filter)","Publishers (mixed)","https://onlinelibrary.wiley.com/action/doSearch?AllField={q}"],
+["Taylor & Francis (OA filter)","Publishers (mixed)","https://www.tandfonline.com/action/doSearch?AllField={q}"],
+["ScienceDirect (OA filter)","Publishers (mixed)","https://www.sciencedirect.com/search?qs={q}"],
+["Oxford Academic (OA filter)","Publishers (mixed)","https://academic.oup.com/search-results?q={q}"],
+["Cambridge Core (OA filter)","Publishers (mixed)","https://www.cambridge.org/core/search?q={q}"],
+["JSTOR (some free)","Publishers (mixed)","https://www.jstor.org/action/doBasicSearch?Query={q}"],
+["Project MUSE","Publishers (mixed)","https://muse.jhu.edu"],
+["DOAJ","Journal directories","https://doaj.org"],
+["SciELO","Regional","https://search.scielo.org/?q={q}"],
+["Redalyc (Latin America)","Regional","https://www.redalyc.org"],
+["African Journals Online","Regional","https://www.ajol.info"],
+["BanglaJOL","Regional","https://www.banglajol.info"],
+["NepJOL","Regional","https://www.nepjol.info"],
+["Indian Academy of Sciences","Regional","https://www.ias.ac.in/Journals"],
+["HAL (France)","Repositories","https://hal.science/search/index?q={q}"],
+["Zenodo","Repositories","https://zenodo.org/search?q={q}"],
+["Open Research Online","Repositories","https://oro.open.ac.uk"],
+["OpenDOAR (find repositories)","Repositories","https://v2.sherpa.ac.uk/opendoar/"],
+["OATD","Theses","https://oatd.org/oatd/search?q={q}"],
+["Open Dissertations","Theses","https://opendissertations.org"],
+["Shodhganga (India)","Theses","https://shodhganga.inflibnet.ac.in"],
+["Shodhgangotri (India)","Theses","https://shodhgangotri.inflibnet.ac.in"],
+["EThOS (UK)","Theses","https://ethos.bl.uk/"],
+["National Academies Press","Reports","https://nap.nationalacademies.org/search/?term={q}"],
+["UNESDOC","Reports","https://unesdoc.unesco.org"],
+["World Bank OKR","Reports","https://openknowledge.worldbank.org/search?query={q}"],
+["FAO Open Knowledge","Reports","https://openknowledge.fao.org"],
+["IDRC","Reports","https://www.idrc.ca"],
+["IDS OpenDocs","Reports","https://opendocs.ids.ac.uk"],
+["Academia.edu (author uploads)","Author-shared","https://www.academia.edu/search?q={q}"],
+["ResearchGate (author uploads)","Author-shared","https://www.researchgate.net/search?q={q}"],
+["Research4Life (free/cheap access for eligible countries)","Access programs","https://www.research4life.org"],
+["WorldCat (find in a library)","Access programs","https://search.worldcat.org/search?q={q}"]
+];
+function everywhere(q, arr=SRC, label="legal sources"){
+  const e = encodeURIComponent(q), g = {};
+  arr.forEach(([n,grp,u]) => (g[grp] = g[grp]||[]).push(`<a href="${esc(u.replace("{q}",e))}" target="_blank" rel="noopener noreferrer">${esc(n)}${u.includes("{q}")?"":" ↗"}</a>`));
+  return `<details class="ev card"><summary>Search everywhere (${arr.length} ${label})</summary><p class="meta">Linked sources open a prefilled search. Those marked ↗ open the site home page; paste your query there.</p>` + Object.keys(g).map(k=>`<h4>${esc(k)}</h4>${g[k].join("")}`).join("") + `</details>`;
+}
+
+function submitOptIn(q){
+  const e = $("email").value.trim();
+  if(!$("consent").checked || !/^\S+@\S+\.\S+$/.test(e) || !FORM_ENDPOINT) return;
+  fetch(FORM_ENDPOINT,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email:e,query:q,consent:true,time:new Date().toISOString()})}).catch(()=>{});
+}
+
+async function getJSON(url){
+  const key = "oaf:"+url.replace(/[?&]mailto=[^&]*|[?&]email=[^&]*/g,"");
+  if(mem[key]) return mem[key];
+  try{
+    const c = JSON.parse(localStorage.getItem(key)||"null");
+    if(c && Date.now()-c.t < CACHE_TTL){ mem[key]=c.d; return c.d; }
+  }catch(e){}
+  const r = await fetch(url);
+  if(!r.ok) throw new Error(r.status);
+  const d = await r.json();
+  mem[key]=d;
+  try{ localStorage.setItem(key, JSON.stringify({t:Date.now(),d})); }catch(e){}
+  return d;
+}
+
+async function search(){
+  const q = $("q").value.trim();
+  const email = UNPAYWALL_EMAIL;
+  if(!q){ return; }
+  submitOptIn(q);
+  if($("mode").value==="books") return searchBooks(q);
+  out.innerHTML = '<div class="card">Searching…</div>';
+
+  const m = q.match(DOI_RE);
+  if(m){ return lookup(m[0].replace(/[.,;]+$/,""), email); }
+
+  try{
+    const d = await getJSON("https://api.crossref.org/works?rows=5&select=DOI,title,author,issued,container-title&query.bibliographic=" + encodeURIComponent(q) + "&mailto=" + encodeURIComponent(email));
+    const items = d.message.items || [];
+    if(!items.length){ out.innerHTML = '<div class="card">No matching papers found. Try the DOI or more of the title.</div>'; return; }
+    out.innerHTML = "<p class='meta'>Pick the matching paper:</p>" + items.map((it,i)=>{
+      const au = (it.author||[]).slice(0,3).map(a=>a.family).filter(Boolean).join(", ");
+      const yr = it.issued?.["date-parts"]?.[0]?.[0] || "";
+      return `<div class="card"><h3>${esc(it.title?.[0]||"Untitled")}</h3><div class="meta">${esc(au)} ${yr?"("+yr+")":""} · ${esc(it["container-title"]?.[0]||"")}</div><p><button class="alt" data-doi="${esc(it.DOI)}">Find free copy</button></p></div>`;
+    }).join("");
+    out.querySelectorAll("button[data-doi]").forEach(b => b.onclick = () => lookup(b.dataset.doi, email));
+    out.insertAdjacentHTML("beforeend",'<div id="extra"></div>'); extras(q,$("extra"));
+  }catch(e){ out.innerHTML = '<div class="card">Title search failed. Check your connection or try a DOI.</div>'; }
+}
+
+async function lookup(doi, email){
+  out.innerHTML = '<div class="card">Checking Unpaywall and OpenAlex…</div>';
+  let title = doi, locs = [], best = null, journal = "";
+  const [up, oa, epmc, s2] = await Promise.allSettled([
+    getJSON(`https://api.unpaywall.org/v2/${encodeURIComponent(doi)}?email=${encodeURIComponent(email)}`),
+    getJSON(`https://api.openalex.org/works/doi:${encodeURIComponent(doi)}?mailto=${encodeURIComponent(email)}`),
+    getJSON(`https://www.ebi.ac.uk/europepmc/webservices/rest/search?query=DOI:%22${encodeURIComponent(doi)}%22&resultType=core&format=json`),
+    getJSON(`https://api.semanticscholar.org/graph/v1/paper/DOI:${encodeURIComponent(doi)}?fields=title,openAccessPdf`)
+  ]);
+  const add = (url, host, ver) => { if(url && !locs.some(x=>x.url===url)) locs.push({url, host, ver}); };
+  if(epmc.status==="fulfilled"){
+    const r = epmc.value.resultList?.result?.[0];
+    if(r){ if(title===doi && r.title) title = r.title;
+      (r.fullTextUrlList?.fullTextUrl||[]).filter(f=>f.availability==="Open access"||f.availability==="Free").forEach(f=>add(f.url,"Europe PMC · "+f.site));
+    }
+  }
+  if(s2.status==="fulfilled" && s2.value.openAccessPdf?.url) add(s2.value.openAccessPdf.url,"Semantic Scholar");
+  if(up.status==="fulfilled"){
+    const u = up.value; title = u.title || title; journal = u.journal_name || "";
+    best = u.best_oa_location;
+    (u.oa_locations||[]).forEach(l => add(l.url_for_pdf||l.url, l.host_type, l.version));
+  }
+  if(oa.status==="fulfilled"){
+    const w = oa.value; if(title===doi) title = w.title || title;
+    (w.locations||[]).filter(l=>l.is_oa && (l.pdf_url||l.landing_page_url)).forEach(l=>{
+      const url = l.pdf_url || l.landing_page_url;
+      if(!locs.some(x=>x.url===url)) locs.push({url, host:l.source?.type||"repository", ver:l.version, lic:l.license});
+    });
+  }
+  const bestUrl = best ? (best.url_for_pdf || best.url) : (locs[0]?.url);
+  let html = `<div class="card"><h3>${esc(title)}</h3><div class="meta">${esc(journal)} · DOI ${esc(doi)}</div></div>`;
+  if(bestUrl){
+    html += `<div class="card"><span class="tag ok">Free legal copy found</span><p><a href="${esc(bestUrl)}" target="_blank" rel="noopener noreferrer"><b>Open best copy</b></a></p>`;
+    if(locs.length>1){
+      html += `<div class="meta">Other legal copies:</div><ul>` + locs.filter(l=>l.url!==bestUrl).map(l=>`<li><a href="${esc(l.url)}" target="_blank" rel="noopener noreferrer">${esc(l.host||"copy")}${l.ver?" · "+esc(l.ver):""}${l.lic?" · "+esc(l.lic):""}</a></li>`).join("") + `</ul>`;
+    }
+    html += `</div>`;
+  } else {
+    const subj = encodeURIComponent("Request for a copy of your paper");
+    const body = encodeURIComponent(`Dear Author,\n\nI am interested in your paper "${title}" (DOI: ${doi}) but cannot access it. Would you be able to share a copy?\n\nThank you.`);
+    html += `<div class="card"><span class="tag">No free copy found</span><p>Legal options:</p><ul>
+      <li>Email the corresponding author (open the paper's page via the DOI to find the address): <a href="mailto:?subject=${subj}&body=${body}">use our message template</a></li>
+      <li>Ask your library for an interlibrary loan, or check <a href="https://scholar.google.com/scholar?q=${encodeURIComponent(title)}" target="_blank" rel="noopener noreferrer">Google Scholar's "All versions"</a></li>
+      <li>See the publisher page: <a href="https://doi.org/${esc(doi)}" target="_blank" rel="noopener noreferrer">doi.org/${esc(doi)}</a></li>
+      <li>Check for a preprint: <a href="https://europepmc.org/search?query=${encodeURIComponent(doi)}" target="_blank" rel="noopener noreferrer">Europe PMC</a> · <a href="https://core.ac.uk/search?q=${encodeURIComponent(title)}" target="_blank" rel="noopener noreferrer">CORE</a></li></ul></div>`;
+  }
+  html += '<div id="extra"></div>' + everywhere(title!==doi ? title : doi);
+  out.innerHTML = html;
+  if(title!==doi) extras(title,$("extra"));
+}
+
+// ---- CORE key stays in a server-side proxy (see core-proxy-worker.js). Never put the key in this file.
+const PROXY_URL = "https://oaf-proxy.theeasyresearcher.workers.dev"; // TODO: e.g. https://oaf-proxy.yourname.workers.dev
+
+async function getText(url){
+  if(mem[url]) return mem[url];
+  const r = await fetch(url); if(!r.ok) throw new Error(r.status);
+  return (mem[url] = await r.text());
+}
+const li = (src,t,url,extra="") => `<li><span class="tag">${esc(src)}</span><a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(t)}</a> <span class="meta">${esc(extra)}</span></li>`;
+
+async function extras(q, box){
+  box.innerHTML = '<div class="card meta">Checking arXiv, DOAJ and CORE…</div>';
+  const [ax, dj, co] = await Promise.allSettled([
+    getText("https://export.arxiv.org/api/query?max_results=5&search_query=" + encodeURIComponent("all:" + q.replace(/[^\w\s]/g," "))),
+    getJSON("https://doaj.org/api/search/articles/" + encodeURIComponent(q) + "?pageSize=5"),
+    PROXY_URL ? getJSON(PROXY_URL.replace(/\/$/,"") + "/core?q=" + encodeURIComponent(q)) : Promise.reject("no proxy")
+  ]);
+  const rows = [];
+  if(ax.status==="fulfilled"){
+    new DOMParser().parseFromString(ax.value,"text/xml").querySelectorAll("entry").forEach(e=>{
+      const t = e.querySelector("title")?.textContent.trim().replace(/\s+/g," "), id = e.querySelector("id")?.textContent;
+      if(t && id) rows.push(li("arXiv", t, id.replace("/abs/","/pdf/"), "PDF preprint"));
+    });
+  }
+  if(dj.status==="fulfilled"){
+    (dj.value.results||[]).forEach(r=>{
+      const b = r.bibjson||{}, l = (b.link||[]).find(x=>x.type==="fulltext") || (b.link||[])[0];
+      if(b.title && l) rows.push(li("DOAJ", b.title, l.url, b.journal?.title||""));
+    });
+  }
+  if(co.status==="fulfilled"){
+    (co.value.results||[]).forEach(r=>{
+      const u = r.downloadUrl || (r.id ? "https://core.ac.uk/works/"+r.id : null);
+      if(r.title && u) rows.push(li("CORE", r.title, u, r.yearPublished||""));
+    });
+  }
+  box.innerHTML = rows.length
+    ? `<div class="card"><b>More free full-text matches</b><p class="meta">Check the title is the one you want before downloading.</p><ul>${rows.join("")}</ul></div>`
+    : '<div class="card meta">No extra matches from arXiv, DOAJ or CORE.</div>';
+}
+
+// ---- Books
+const BOOKSRC = [
+["Open Library (borrow free)","Free & borrowable","https://openlibrary.org/search?q={q}"],
+["Internet Archive texts","Free & borrowable","https://archive.org/search?query={q}&and[]=mediatype%3A%22texts%22"],
+["Project Gutenberg","Free & borrowable","https://www.gutenberg.org/ebooks/search/?query={q}"],
+["Standard Ebooks","Free & borrowable","https://standardebooks.org/ebooks?query={q}"],
+["Google Books (free ebooks)","Free & borrowable","https://www.google.com/search?tbm=bks&tbs=bkv:f&q={q}"],
+["DOAB (peer-reviewed OA books)","Academic open access","https://directory.doabooks.org/discover?query={q}"],
+["OAPEN","Academic open access","https://library.oapen.org/discover?query={q}"],
+["HathiTrust","Academic open access","https://catalog.hathitrust.org/Search/Home?lookfor={q}"],
+["Springer Nature OA books","Academic open access","https://link.springer.com/search?query={q}&content-type=book&openaccess=true"],
+["WorldCat (find in a library)","Library access","https://search.worldcat.org/search?q={q}"],
+["Research4Life (eligible countries)","Library access","https://www.research4life.org"]
+];
+
+async function searchBooks(q){
+  out.innerHTML = '<div class="card">Searching Open Library, Google Books and Project Gutenberg…</div>';
+  const n = q.replace(/[-\s]/g,"");
+  const isbn = /^(97[89])?\d{9}[\dXx]$/.test(n);
+  const [ol, gb, gt] = await Promise.allSettled([
+    getJSON("https://openlibrary.org/search.json?limit=8&fields=key,title,author_name,first_publish_year,ia,ebook_access&" + (isbn ? "isbn="+n : "q="+encodeURIComponent(q))),
+    getJSON("https://www.googleapis.com/books/v1/volumes?maxResults=6&filter=free-ebooks&q=" + encodeURIComponent(q)),
+    getJSON("https://gutendex.com/books?search=" + encodeURIComponent(q))
+  ]);
+  const rows = [];
+  if(ol.status==="fulfilled"){
+    const rank = {public:0, borrowable:1};
+    (ol.value.docs||[]).filter(d=>d.ebook_access in rank && d.ia?.length).sort((a,b)=>rank[a.ebook_access]-rank[b.ebook_access]).forEach(d=>{
+      rows.push(li("Open Library", d.title, "https://archive.org/details/"+d.ia[0], `${(d.author_name||[])[0]||""} ${d.first_publish_year||""} · ${d.ebook_access==="public"?"free to read":"borrow free (needs free archive.org account)"}`));
+    });
+  }
+  if(gb.status==="fulfilled"){
+    (gb.value.items||[]).forEach(i=>{
+      const v = i.volumeInfo||{}, a = i.accessInfo||{};
+      const u = a.pdf?.downloadLink || a.epub?.downloadLink || a.webReaderLink || v.infoLink;
+      if(v.title && u) rows.push(li("Google Books", v.title, u, `${(v.authors||[])[0]||""} · free ebook`));
+    });
+  }
+  if(gt.status==="fulfilled"){
+    (gt.value.results||[]).slice(0,5).forEach(b=>{
+      const f = b.formats||{}, u = f["text/html"] || f["application/epub+zip"] || f["text/plain; charset=utf-8"];
+      if(u) rows.push(li("Gutenberg", b.title, u, `${(b.authors||[])[0]?.name||""} · public domain`));
+    });
+  }
+  out.innerHTML = (rows.length
+    ? `<div class="card"><span class="tag ok">Free legal books found</span><ul>${rows.join("")}</ul></div>`
+    : `<div class="card"><span class="tag">No free copy found here</span><p>Try the sources below, borrow from your library (many use Libby), or request an interlibrary loan.</p></div>`)
+    + everywhere(q, BOOKSRC, "book sources");
+}
+
+$("go").onclick = search;
+$("q").addEventListener("keydown", e => { if(e.key==="Enter") search(); });
+</script>
+</body>
+</html>
