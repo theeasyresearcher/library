@@ -78,7 +78,7 @@ li{margin-bottom:6px}
 <footer class="foot">
 <div>🌐 <a href="https://sites.google.com/view/schrodingersstudent/initiatives" target="_blank" rel="noopener noreferrer">sites.google.com/view/schrodingersstudent/initiatives</a></div>
 <div>✉ <a href="mailto:theeasyresearcher@gmail.com">theeasyresearcher@gmail.com</a></div>
-<p class="small">Sources: Links to 100+ open repositories. Only links to copies lawfully shared by publishers, authors, and repositories. Does not link to pirate sites such as scihb, oceanfpapers, frefullpdf, libgn, etc.</p>
+<p class="small">Sources: Links to 100+ open repositories. Only links to copies lawfully shared by publishers, authors, and repositories. Does not link to pirate sites such as Sci-Hub, OceanofPapers, FreeFullPDF, LibGen, etc.</p>
 </footer>
 </main>
 <script>
@@ -180,10 +180,10 @@ const SRC = [
 ["Research4Life (free/cheap access for eligible countries)","Access programs","https://www.research4life.org"],
 ["WorldCat (find in a library)","Access programs","https://search.worldcat.org/search?q={q}"]
 ];
-function everywhere(q, arr=SRC, label="legal sources"){
+function everywhere(q, arr=SRC, label="legal sources", open=false){
   const e = encodeURIComponent(q), g = {};
   arr.forEach(([n,grp,u]) => (g[grp] = g[grp]||[]).push(`<a href="${esc(u.replace("{q}",e))}" target="_blank" rel="noopener noreferrer">${esc(n)}${u.includes("{q}")?"":" ↗"}</a>`));
-  return `<details class="ev card"><summary>Search everywhere (${arr.length} ${label})</summary><p class="meta">Linked sources open a prefilled search. Those marked ↗ open the site home page; paste your query there.</p>` + Object.keys(g).map(k=>`<h4>${esc(k)}</h4>${g[k].join("")}`).join("") + `</details>`;
+  return `<details class="ev card"${open?" open":""}><summary>Search everywhere (${arr.length} ${label})</summary><p class="meta">Linked sources open a prefilled search. Those marked ↗ open the site home page; paste your query there.</p>` + Object.keys(g).map(k=>`<h4>${esc(k)}</h4>${g[k].join("")}`).join("") + `</details>`;
 }
 
 async function getJSON(url){
@@ -392,17 +392,20 @@ const THESISSRC = [
 ["DART-Europe","Europe & UK","https://www.dart-europe.org"],
 ["EThOS (UK)","Europe & UK","https://ethos.bl.uk/"],
 ["HAL (France)","Europe & UK","https://hal.science/search/index?q={q}"],
-["Shodhganga (India)","India","https://shodhganga.inflibnet.ac.in"],
-["Shodhgangotri (India, synopses)","India","https://shodhgangotri.inflibnet.ac.in"],
+["Shodhganga (India)","India","https://shodhganga.inflibnet.ac.in/simple-search?query={q}&go="],
+["KrishiKosh (India, agriculture)","India","https://krishikosh.egranth.ac.in"],
+["JNCASR repository (India)","India","https://libjncir.jncasr.ac.in"],
+["Shodhgangotri (India, synopses)","India","https://shodhgangotri.inflibnet.ac.in/simple-search?query={q}"],
 ["Google Scholar","Search engines","https://scholar.google.com/scholar?q={q}"],
 ["WorldCat (find in a library)","Library access","https://search.worldcat.org/search?q={q}"]
 ];
 
 async function searchTheses(q){
-  out.innerHTML = '<div class="card load">Searching OpenAlex and CORE for theses…</div>';
-  const [oa, co] = await Promise.allSettled([
+  out.innerHTML = '<div class="card load">Searching OpenAlex, CORE and NDLTD for theses…</div>';
+  const [oa, co, nd] = await Promise.allSettled([
     getJSON("https://api.openalex.org/works?filter=type:dissertation&per-page=10&search=" + encodeURIComponent(q) + "&mailto=" + encodeURIComponent(UNPAYWALL_EMAIL)),
-    PROXY_URL ? getJSON(PROXY_URL.replace(/\/$/,"") + "/core?q=" + encodeURIComponent("(" + q.replace(/["()]/g," ") + ') AND documentType:"thesis"')) : Promise.reject("no proxy")
+    PROXY_URL ? getJSON(PROXY_URL.replace(/\/$/,"") + "/core?q=" + encodeURIComponent("(" + q.replace(/["()]/g," ") + ') AND documentType:"thesis"')) : Promise.reject("no proxy"),
+    PROXY_URL ? getJSON(PROXY_URL.replace(/\/$/,"") + "/ndltd?q=" + encodeURIComponent(q)) : Promise.reject("no proxy")
   ]);
   const free = [], record = [];
   if(oa.status==="fulfilled"){
@@ -420,18 +423,24 @@ async function searchTheses(q){
       if(r.title && u) free.push(li("CORE", r.title, u, `${(r.authors||[])[0]?.name||""} ${r.yearPublished||""} · free`.trim()));
     });
   }
+  if(nd.status==="fulfilled"){
+    (nd.value.items||[]).forEach(i=>{
+      const u = i.source_url || ("https://search.dev.ndltd.org" + (i.item_url||""));
+      if(i.title && u) record.push(li("NDLTD", i.title, u, `${(i.creators||[])[0]||""} · ${i.institution||""} ${i.year||""} · repository record`));
+    });
+  }
   out.innerHTML = (free.length
     ? `<div class="card"><span class="tag ok">Free theses found</span><ul>${free.join("")}</ul></div>`
     : `<div class="card"><span class="tag">No free thesis found here</span><p>Try the repositories below. Many universities host theses only in their own library, so searching with the author name or university helps. You can also email the author or ask your library for an interlibrary loan.</p></div>`)
-    + (record.length ? `<div class="card"><b>Catalog records (free copy not listed)</b><ul>${record.join("")}</ul></div>` : "")
-    + everywhere(q, THESISSRC, "thesis sources");
+    + (record.length ? `<div class="card"><b>Thesis records from university repositories</b><p class="meta">Open the record to check access. Some repositories restrict downloads.</p><ul>${record.join("")}</ul></div>` : "")
+    + everywhere(q, THESISSRC, "thesis sources", true);
 }
 
 const PH = {articles:"DOI or article title", books:"Book title, author or ISBN", theses:"Thesis topic, title or author"};
-const EX = {articles:["10.1371/journal.pmed.0020124","Attention is all you need"], books:["Pride and Prejudice","9780140449136"], theses:["machine learning","climate change India"]};
+const EX = {articles:["Evidence for High-Energy Extraterrestrial Neutrinos at the IceCube Detector","Quantum supremacy using a programmable superconducting processor"], books:["Thirukkural","Relativity: The Special and General Theory"], theses:["graphene","protein structure prediction"]};
 function renderChips(){
   const m = $("mode").value;
-  $("chips").innerHTML = 'Try: ' + EX[m].map(x=>`<span class="chip" role="button" tabindex="0" data-q="${esc(x)}">${esc(x)}</span>`).join("");
+  $("chips").innerHTML = 'Try: ' + EX[m].map(x=>`<span class="chip" role="button" tabindex="0" data-q="${esc(x[1])}">${esc(x[0])}</span>`).join("");
   $("chips").querySelectorAll(".chip").forEach(c=>{
     const go = () => { $("q").value = c.dataset.q; search(); };
     c.onclick = go; c.onkeydown = e => { if(e.key==="Enter"||e.key===" "){ e.preventDefault(); go(); } };
