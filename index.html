@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Easy Research Library</title>
+<title>Easy Researcher Library</title>
 <style>
 :root{--bg:#fafaf7;--fg:#1d1d1b;--muted:#6b6b66;--card:#fff;--line:#e2e0d8;--acc:#1b6b4a;--accfg:#fff}
 @media (prefers-color-scheme:dark){:root{--bg:#161614;--fg:#eeeee8;--muted:#9a9a92;--card:#1f1f1c;--line:#34342f;--acc:#4fb88a;--accfg:#0d1a14}}
@@ -28,7 +28,7 @@ details.ev{margin-top:14px;font-family:system-ui,sans-serif}details.ev summary{c
 </head>
 <body>
 <main>
-<h1>Easy Research Library</h1>
+<h1>Easy Researcher Library</h1>
 <p class="sub">Pick articles or books, then enter a DOI, title or ISBN. We look for a legal, free full-text copy. Results appear on this page; nothing is sent by email.</p>
 <select id="mode"><option value="articles">Research articles</option><option value="books">Books</option></select>
 <input id="q" placeholder="DOI, article title, book title, author or ISBN" autocomplete="off">
@@ -36,7 +36,7 @@ details.ev{margin-top:14px;font-family:system-ui,sans-serif}details.ev summary{c
 <label class="meta" style="display:block;margin-bottom:10px"><input id="consent" type="checkbox" style="width:auto;margin:0 6px 0 0"> I'm happy to be contacted about research collaboration. No article will be emailed to me.</label>
 <button id="go">Find free copy</button>
 <div id="out"></div>
-<p class="small">Sources: Crossref, Unpaywall, OpenAlex, Europe PMC, Semantic Scholar, arXiv, DOAJ, CORE, Open Library, Google Books, Project Gutenberg, plus links to 100+ open repositories. Only links to copies lawfully shared by publishers, authors, and repositories.</p>
+<p class="small">Sources: Crossref, Unpaywall, OpenAlex, Europe PMC, Semantic Scholar, Internet Archive, arXiv, DOAJ, CORE, Open Library, Google Books, Project Gutenberg, plus links to 100+ open repositories. Only links to copies lawfully shared by publishers, authors, and repositories.</p>
 </main>
 <script>
 const $ = id => document.getElementById(id);
@@ -67,6 +67,7 @@ const SRC = [
 ["Open Access Button","Access finders","https://openaccessbutton.org"],
 ["GetTheResearch","Access finders","https://gettheresearch.org"],
 ["Unpaywall","Access finders","https://unpaywall.org"],
+["PaperPanda (Chrome extension)","Access finders","https://paperpanda.app"],
 ["OpenAIRE","Aggregators","https://www.openaire.eu"],
 ["Paperity","Aggregators","https://paperity.org"],
 ["Digital Commons Network","Aggregators","https://network.bepress.com"],
@@ -189,6 +190,16 @@ async function search(){
   }catch(e){ out.innerHTML = '<div class="card">Title search failed. Check your connection or try a DOI.</div>'; }
 }
 
+async function addFatcat(doi, add){
+  try{
+    const r = await getJSON("https://api.fatcat.wiki/v0/release/lookup?hide=abstracts,refs&expand=files&doi=" + encodeURIComponent(doi.toLowerCase()));
+    (r.files||[]).filter(f => !f.mimetype || f.mimetype === "application/pdf").forEach(f => {
+      const u = (f.urls||[]).find(x => x.rel === "webarchive") || (f.urls||[]).find(x => x.rel === "repository") || (f.urls||[])[0];
+      if(u) add(u.url, "Internet Archive (preserved)");
+    });
+  }catch(e){}
+}
+
 async function lookup(doi, email){
   out.innerHTML = '<div class="card">Checking Unpaywall and OpenAlex…</div>';
   let title = doi, locs = [], best = null, journal = "";
@@ -218,6 +229,7 @@ async function lookup(doi, email){
       if(!locs.some(x=>x.url===url)) locs.push({url, host:l.source?.type||"repository", ver:l.version, lic:l.license});
     });
   }
+  await addFatcat(doi, add);
   const bestUrl = best ? (best.url_for_pdf || best.url) : (locs[0]?.url);
   let html = `<div class="card"><h3>${esc(title)}</h3><div class="meta">${esc(journal)} · DOI ${esc(doi)}</div></div>`;
   if(bestUrl){
@@ -241,7 +253,7 @@ async function lookup(doi, email){
 }
 
 // ---- CORE key stays in a server-side proxy (see core-proxy-worker.js). Never put the key in this file.
-const PROXY_URL = "https://oaf-proxy.theeasyresearcher.workers.dev"; // TODO: e.g. https://oaf-proxy.yourname.workers.dev
+const PROXY_URL = "https://oaf-proxy.theeasyresearcher.workers.dev";
 
 async function getText(url){
   if(mem[url]) return mem[url];
